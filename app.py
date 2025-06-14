@@ -24,9 +24,12 @@ if uploaded_file:
     st.dataframe(data[['title', 'location', 'fraud_probability', 'prediction']])
 
     # Pie chart
-    pie = data['prediction'].value_counts().rename({0: 'Genuine', 1: 'Fraudulent'}).reset_index()
-    fig_pie = px.pie(pie, values='prediction', names='index', title="Genuine vs Fraudulent Jobs")
-    st.plotly_chart(fig_pie, use_container_width=True)
+   # ✅ FIXED PIE CHART
+pie = data['prediction'].value_counts().rename_axis('label').reset_index(name='value')
+pie['label'] = pie['label'].map({0: 'Genuine', 1: 'Fraudulent'})
+fig_pie = px.pie(pie, values='value', names='label', title="Genuine vs Fraudulent Jobs")
+st.plotly_chart(fig_pie, use_container_width=True)
+
 
     # Histogram
     fig_hist = px.histogram(data, x='fraud_probability', nbins=20, title='Fraud Probability Distribution')
