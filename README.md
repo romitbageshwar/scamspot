@@ -46,7 +46,7 @@ scamspot/
 
 1️⃣ Clone this repository
 
-   git clone https://github.com/YOUR-USERNAME/scamspot.git
+   git clone https://github.com/romitbageshwar/scamspot.git
    cd scamspot
 
 2️⃣ Install dependencies
