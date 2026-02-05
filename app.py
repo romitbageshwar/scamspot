@@ -1,51 +1,108 @@
 import streamlit as st
 import pandas as pd
+import pickle
 import plotly.express as px
-import joblib
 
-# Load the trained model
-model = joblib.load('model.pkl')
+st.set_page_config(
+    page_title="ScamSpot - Fake Job Detection",
+    page_icon="🔍",
+    layout="wide"
+)
 
 st.title("🔍 ScamSpot — Spot Fake Job Postings")
+st.write("Upload a CSV file containing job listings to detect fraudulent postings.")
 
-# File uploader
-uploaded_file = st.file_uploader("📂 Upload a CSV file", type=["csv"])
+@st.cache_resource
+def load_model():
+    with open("model.pkl", "rb") as f:
+        return pickle.load(f)
+
+model = load_model()
+
+uploaded_file = st.file_uploader(
+    "📂 Upload a CSV file",
+    type=["csv"]
+)
 
 if uploaded_file is not None:
-    data = pd.read_csv(uploaded_file)
-    st.write("✅ Uploaded Data Preview:", data.head())
+    try:
+        data = pd.read_csv(uploaded_file)
 
-    # Make sure 'title' and 'description' exist
-    if 'title' in data.columns and 'description' in data.columns:
-        # Combine title and description
-        text = data['title'].fillna('') + ' ' + data['description'].fillna('')
-        
-        # Predict fraud probability
-        pred_proba = model.predict_proba(text)[:, 1]
-        pred = model.predict(text)
+        if "title" not in data.columns or "description" not in data.columns:
+            st.error("CSV must contain 'title' and 'description' columns.")
+            st.stop()
 
-        # Add to DataFrame
-        data['fraud_probability'] = pred_proba
-        data['prediction'] = pred
+        data["title"] = data["title"].fillna("")
+        data["description"] = data["description"].fillna("")
 
-        # Show results table
-        st.subheader("✅ Predictions")
-        st.write(data[['title', 'fraud_probability', 'prediction']])
+        data["text"] = data["title"] + " " + data["description"]
 
-        # Pie Chart: Genuine vs Fraudulent
-        pie = data['prediction'].value_counts().rename_axis('label').reset_index(name='value')
-        pie['label'] = pie['label'].map({0: 'Genuine', 1: 'Fraudulent'})
-        fig_pie = px.pie(pie, values='value', names='label', title="Genuine vs Fraudulent Jobs")
-        st.plotly_chart(fig_pie, use_container_width=True)
+        predictions = model.predict(data["text"])
+        probabilities = model.predict_proba(data["text"])[:, 1]
 
-        # Histogram: Fraud Probabilities
-        fig_hist = px.histogram(data, x='fraud_probability', nbins=20, title="Distribution of Fraud Probability")
-        st.plotly_chart(fig_hist, use_container_width=True)
+        data["prediction"] = predictions
+        data["fraud_probability"] = probabilities
 
-        # Top 10 suspicious listings
-        top10 = data.sort_values(by='fraud_probability', ascending=False).head(10)
-        st.subheader("🚨 Top 10 Most Suspicious Listings")
-        st.write(top10[['title', 'fraud_probability']])
+        data["prediction_label"] = data["prediction"].map({
+            0: "Genuine",
+            1: "Fraudulent"
+        })
 
-    else:
-        st.error("Uploaded CSV must have 'title' and 'description' columns.")
+        st.success("✅ Predictions generated successfully!")
+
+        st.subheader("📋 Prediction Results")
+        st.dataframe(
+            data[["title", "prediction_label", "fraud_probability"]]
+            .sort_values("fraud_probability", ascending=False),
+            use_container_width=True
+        )
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            pie_data = (
+                data["prediction_label"]
+                .value_counts()
+                .reset_index()
+            )
+            pie_data.columns = ["label", "count"]
+
+            fig_pie = px.pie(
+                pie_data,
+                names="label",
+                values="count",
+                title="Genuine vs Fraudulent Jobs"
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        with col2:
+            fig_hist = px.histogram(
+                data,
+                x="fraud_probability",
+                nbins=20,
+                title="Fraud Probability Distribution"
+            )
+            st.plotly_chart(fig_hist, use_container_width=True)
+
+        st.subheader("🚨 Top 10 Most Suspicious Job Listings")
+        top10 = data.sort_values(
+            "fraud_probability", ascending=False
+        ).head(10)
+
+        st.dataframe(
+            top10[["title", "fraud_probability"]],
+            use_container_width=True
+        )
+
+        st.subheader("📥 Download Predictions")
+        csv = data.to_csv(index=False)
+        st.download_button(
+            label="Download predictions as CSV",
+            data=csv,
+            file_name="scamspot_predictions.csv",
+            mime="text/csv"
+        )
+
+    except Exception as e:
+        st.error("❌ An error occurred while processing the file.")
+        st.exception(e)
